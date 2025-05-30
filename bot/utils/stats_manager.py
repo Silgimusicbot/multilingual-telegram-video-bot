@@ -1,3 +1,6 @@
+"""
+Statistics manager for tracking bot usage permanently using GitHub Gist.
+"""
 import json
 import os
 import requests
