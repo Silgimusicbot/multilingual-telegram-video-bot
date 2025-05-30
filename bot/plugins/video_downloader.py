@@ -1,8 +1,3 @@
-"""
-Video downloader plugin for the Telegram bot.
-Downloads videos from TikTok, Instagram, and YouTube.
-"""
-
 import os
 import tempfile
 import asyncio
@@ -21,48 +16,23 @@ import asyncio
 logger = setup_logger(__name__)
 
 class VideoDownloaderPlugin:
-    """Plugin for downloading videos from various platforms."""
-    
-    def __init__(self, client: Client):
-        self.client = client
-        self.name = "Video Downloader"
-        self.version = "1.0.0"
-        self.description = "Download videos from TikTok, Instagram, and YouTube"
-    
-    def register(self):
-        """Register all plugin commands."""
         self._register_download_handler()
         logger.info(f"Plugin '{self.name}' registered successfully")
     
     def _register_download_handler(self):
-        """Register the video download handler."""
-        
-        @self.client.on_message(filters.private & filters.text & ~filters.command([
-            "start", "help", "info", "stats", "admin", "shutdown", 
-            "echo", "ping", "time", "count"
-        ]))
-        @error_handler
-        @track_usage
-        @typing_action
-        async def handle_video_download(client: Client, message: Message):
-            """Handle video download requests."""
             url = message.text.strip()
             user = message.from_user
             
-            # Log all text messages received by video downloader
             logger.info(f"Video downloader received message from {user.id}: {url[:50]}...")
             
-            # Check if the message contains a supported video platform URL
             supported_platforms = ["tiktok.com", "youtu.be", "youtube.com", "instagram.com"]
             
             if not any(platform in url.lower() for platform in supported_platforms):
-                # Not a video URL, let the regular message handler process it
                 logger.info(f"Not a video URL, skipping: {url[:30]}...")
                 return
             
             logger.info(f"Processing video URL: {url}")
             
-            # Send processing message in user's language
             processing_text = language_manager.get_text(user.id, 'status', 'processing')
             processing_msg = await message.reply(processing_text)
             
@@ -97,37 +67,30 @@ class VideoDownloaderPlugin:
                 logger.info(f"Download result for {platform}: {file_path}")
                 
                 if file_path and os.path.exists(file_path):
-                    # Get file size for upload progress
                     file_size = os.path.getsize(file_path)
                     formatted_size = language_manager.format_size(file_size, user.id)
                     
-                    # Extract video title
                     video_title = await self._extract_video_title(url, platform)
                     
-                    # Update status to uploading with progress
                     uploading_text = language_manager.get_text(user.id, 'progress', 'uploading', percentage=0)
                     await processing_msg.edit_text(uploading_text)
                     
-                    # Send the video with upload tracking
                     async def upload_progress_callback(current, total):
                         percentage = int((current / total) * 100)
                         progress_bar = language_manager.create_progress_bar(percentage)
                         uploading_text = language_manager.get_text(user.id, 'progress', 'uploading', percentage=percentage)
                         progress_text = f"📤 {uploading_text}: {progress_bar}\n📁 {formatted_size}"
                         try:
-                            if percentage % 10 == 0:  # Update every 10%
+                            if percentage % 10 == 0:
                                 await processing_msg.edit_text(progress_text)
                         except:
                             pass
                     
-                    # Create caption with title and promotional message
-                    platform_text = platform.title()  # Instagram, TikTok, etc.
+                    platform_text = platform.title()
                     promo_text = self._get_promotional_text(user.id)
                     
-                    # Get user's language for the caption
                     user_lang = language_manager.get_user_language(user.id)
                     
-                    # Create localized caption based on user's language
                     if user_lang == 'az':
                         caption = f"📹 {platform_text}dan yükləndi"
                         if video_title:
@@ -149,7 +112,6 @@ class VideoDownloaderPlugin:
                             caption += f"\n🎬 {video_title}"
                         caption += f"\n📁 Размер: {formatted_size}\n\n{promo_text}"
                     else:
-                        # Default to English
                         caption = f"📹 Downloaded from {platform_text}"
                         if video_title:
                             caption += f"\n🎬 {video_title}"
@@ -161,13 +123,11 @@ class VideoDownloaderPlugin:
                         progress=upload_progress_callback
                     )
                     
-                    # Clean up the file
                     try:
                         os.remove(file_path)
                     except Exception as cleanup_error:
                         logger.warning(f"Failed to cleanup file {file_path}: {cleanup_error}")
                     
-                    # Delete the processing message
                     await processing_msg.delete()
                     
                     logger.info(f"Successfully downloaded and sent {platform} video for user {message.from_user.id}")
@@ -184,83 +144,17 @@ class VideoDownloaderPlugin:
                 await processing_msg.edit_text(f"❌ Error downloading video: {str(e)}")
     
     async def _download_tiktok(self, url: str, progress_msg=None) -> Optional[str]:
-        """Download TikTok video using yt-dlp with optimized settings."""
-        logger.info(f"Starting TikTok download for: {url}")
-        try:
-            import yt_dlp
-            import random
-            
-            # Create unique temporary filename
-            import os
-            import time
-            temp_dir = tempfile.gettempdir()
-            temp_filename = f"tiktok_{int(time.time())}_{os.getpid()}"
-            temp_path = os.path.join(temp_dir, temp_filename)
-            
-            # Random user agents for TikTok
-            user_agents = [
-                'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
-                'Mozilla/5.0 (Linux; Android 12; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            ]
-            
-            # TikTok optimized configuration
-            ydl_opts = {
-                'format': 'best[ext=mp4]/mp4/best',
-                'outtmpl': f'{temp_path}.%(ext)s',
-                'quiet': True,
-                'no_warnings': True,
-                'user_agent': random.choice(user_agents),
-                'http_headers': {
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                    'Accept-Language': 'en-US,en;q=0.5',
-                    'Accept-Encoding': 'gzip, deflate',
-                    'DNT': '1',
-                    'Connection': 'keep-alive',
-                    'Upgrade-Insecure-Requests': '1'
-                },
-                'extractor_args': {
-                    'tiktok': {
-                        'webpage_url_basename': 'video'
-                    }
-                }
-            }
-            
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
-                
-            # Find the actual downloaded file
-            import glob
-            pattern = f'{temp_path}.*'
-            files = glob.glob(pattern)
-            
-            if files and os.path.exists(files[0]) and os.path.getsize(files[0]) > 0:
-                downloaded_file = files[0]
-                logger.info(f"TikTok video saved to: {downloaded_file} (size: {os.path.getsize(downloaded_file)} bytes)")
-                return downloaded_file
-            else:
-                logger.error(f"TikTok download failed or file is empty. Found files: {files}")
-                return None
-                
-        except Exception as e:
-            logger.error(f"TikTok download error: {e}", exc_info=True)
-            return None
-    
-    async def _download_youtube(self, url: str, progress_msg=None) -> Optional[str]:
-        """Download YouTube video using yt-dlp with advanced bypass techniques."""
         logger.info(f"Starting YouTube download for: {url}")
         try:
             import yt_dlp
             import random
             
-            # Create unique temporary filename
             import os
             import time
             temp_dir = tempfile.gettempdir()
             temp_filename = f"youtube_{int(time.time())}_{os.getpid()}"
             temp_path = os.path.join(temp_dir, temp_filename)
             
-            # Random user agents to avoid detection
             user_agents = [
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -269,7 +163,6 @@ class VideoDownloaderPlugin:
                 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/121.0'
             ]
             
-            # Base configuration
             base_opts = {
                 'outtmpl': f'{temp_path}.%(ext)s',
                 'quiet': True,
@@ -293,9 +186,7 @@ class VideoDownloaderPlugin:
                 }
             }
             
-            # Advanced YouTube extraction strategies
             extraction_methods = [
-                # Method 1: Mobile web client (often bypasses restrictions)
                 {
                     **base_opts,
                     'format': '18/mp4[height<=360]/best[height<=360]',
@@ -312,7 +203,6 @@ class VideoDownloaderPlugin:
                         'User-Agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36'
                     }
                 },
-                # Method 2: Android TV client (less restricted)
                 {
                     **base_opts,
                     'format': 'mp4[height<=480]/18/mp4',
@@ -323,7 +213,6 @@ class VideoDownloaderPlugin:
                         }
                     }
                 },
-                # Method 3: iOS with specific format
                 {
                     **base_opts,
                     'format': '22/18/mp4[height<=720]/best[height<=720]',
@@ -338,7 +227,6 @@ class VideoDownloaderPlugin:
                         'User-Agent': 'com.google.ios.youtube/17.33.2 (iPhone14,3; U; CPU iOS 15_6 like Mac OS X)'
                     }
                 },
-                # Method 4: Embedded player (sometimes works)
                 {
                     **base_opts,
                     'format': 'worst[ext=mp4]/mp4/best[height<=360]',
@@ -354,7 +242,6 @@ class VideoDownloaderPlugin:
                         'Origin': 'https://www.youtube.com'
                     }
                 },
-                # Method 5: Age-gated bypass
                 {
                     **base_opts,
                     'format': '18/mp4',
@@ -365,7 +252,6 @@ class VideoDownloaderPlugin:
                         }
                     }
                 },
-                # Method 6: Audio-only as fallback (convert to video)
                 {
                     **base_opts,
                     'format': 'bestaudio[ext=m4a]/bestaudio',
@@ -387,13 +273,11 @@ class VideoDownloaderPlugin:
                     logger.info(f"Attempting YouTube extraction method {i+1}")
                     
                     with yt_dlp.YoutubeDL(opts) as ydl:
-                        # Add some delay between attempts
                         if i > 0:
                             await asyncio.sleep(2)
                             
                         ydl.download([url])
                         
-                    # Find the actual downloaded file
                     import glob
                     pattern = f'{temp_path}.*'
                     files = glob.glob(pattern)
@@ -405,7 +289,6 @@ class VideoDownloaderPlugin:
                         
                 except Exception as method_error:
                     logger.warning(f"YouTube extraction method {i+1} failed: {method_error}")
-                    # Clean up any partial downloads
                     import glob
                     for partial_file in glob.glob(f'{temp_path}*'):
                         try:
@@ -422,117 +305,14 @@ class VideoDownloaderPlugin:
             return None
     
     async def _download_instagram(self, url: str, progress_msg=None) -> Optional[str]:
-        """Download Instagram video using yt-dlp."""
-        logger.info(f"Starting Instagram download for: {url}")
-        try:
-            import yt_dlp
-            
-            # Create unique temporary filename
-            import os
-            import time
-            temp_dir = tempfile.gettempdir()
-            temp_filename = f"instagram_{int(time.time())}_{os.getpid()}"
-            temp_path = os.path.join(temp_dir, temp_filename)
-            
-            ydl_opts = {
-                'format': 'best[ext=mp4]/best',
-                'outtmpl': f'{temp_path}.%(ext)s',
-                'quiet': True,
-                'no_warnings': True,
-            }
-            
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
-                
-            # Find the actual downloaded file
-            import glob
-            pattern = f'{temp_path}.*'
-            files = glob.glob(pattern)
-            
-            if files and os.path.exists(files[0]) and os.path.getsize(files[0]) > 0:
-                downloaded_file = files[0]
-                logger.info(f"Instagram video saved to: {downloaded_file} (size: {os.path.getsize(downloaded_file)} bytes)")
-                return downloaded_file
-            else:
-                logger.error(f"Instagram download failed or file is empty. Found files: {files}")
-                return None
-                
-        except Exception as e:
-            logger.error(f"Instagram download error: {e}", exc_info=True)
-            return None
-    
-    def _download_instagram_post(self, loader, shortcode):
-        """Helper method to download Instagram post."""
         post = instaloader.Post.from_shortcode(loader.context, shortcode)
         loader.download_post(post, target="")
 
     async def _extract_video_title(self, url: str, platform: str) -> str:
-        """Extract video title from URL."""
-        try:
-            import random
-            
-            # TikTok needs special handling
-            if "tiktok.com" in url.lower():
-                user_agents = [
-                    'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
-                    'Mozilla/5.0 (Linux; Android 12; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                ]
-                
-                ydl_opts = {
-                    'quiet': True,
-                    'no_warnings': True,
-                    'extract_flat': False,  # Full extraction needed for TikTok
-                    'user_agent': random.choice(user_agents),
-                    'http_headers': {
-                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                        'Accept-Language': 'en-US,en;q=0.5',
-                        'Accept-Encoding': 'gzip, deflate',
-                        'DNT': '1',
-                        'Connection': 'keep-alive',
-                        'Upgrade-Insecure-Requests': '1'
-                    }
-                }
-            else:
-                # For YouTube and Instagram
-                ydl_opts = {
-                    'quiet': True,
-                    'no_warnings': True,
-                    'extract_flat': True,
-                }
-            
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-                
-                # Try multiple title sources
-                title = (info.get('title') or 
-                        info.get('description', '').split('\n')[0] or
-                        info.get('uploader', '') or
-                        '')
-                
-                # Clean and truncate title if too long
-                if title:
-                    title = title.strip()
-                    if len(title) > 100:
-                        title = title[:97] + "..."
-                    logger.info(f"Extracted {platform} title: {title}")
-                    return title
-                else:
-                    logger.debug(f"No title found for {platform} video")
-                    return f"Video by {info.get('uploader', platform)}"
-                
-        except Exception as e:
-            logger.debug(f"Could not extract title from {url}: {e}")
-            return ""
-
-    def _get_promotional_text(self, user_id: int) -> str:
-        """Get promotional text for Telegram groups in user's language."""
         from bot.utils.language_manager import language_manager
         
-        # Get promotional text in user's language
         promo_text = language_manager.get_text(user_id, 'promotional', 'groups')
         
-        # Add the group links
         groups = "@silgiuserbots | @silgiub | @silgiuserbotchat"
         
         return f"{promo_text}\n{groups}"
