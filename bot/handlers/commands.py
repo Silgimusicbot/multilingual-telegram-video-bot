@@ -10,6 +10,9 @@ from bot.utils.logger import setup_logger
 from bot.utils.decorators import error_handler, track_usage
 from bot.config import config
 from bot.utils.language_manager import language_manager
+from bot.utils.stats_manager import stats_manager
+import os
+import asyncio
 
 logger = setup_logger(__name__)
 
@@ -23,6 +26,10 @@ def register_command_handlers(client: Client):
         """Handle /start command with language selection."""
         user = message.from_user
         user_id = user.id
+        
+        # Add user to statistics
+        stats_manager.add_user(user.id)
+        stats_manager.add_command()
         
         # Get welcome text in user's language
         welcome_text = language_manager.get_text(user_id, 'commands', 'start')
@@ -147,21 +154,133 @@ def register_command_handlers(client: Client):
     @error_handler
     async def admin_command(client: Client, message: Message):
         """Handle /admin command (admin only)."""
-        admin_text = (
-            "🔧 **Admin Panel**\n\n"
-            "**Available Admin Commands:**\n"
-            "• `/admin` - Show this admin panel\n"
-            "• `/broadcast <message>` - Send message to all users\n"
-            "• `/logs` - Get recent log entries\n"
-            "• `/shutdown` - Gracefully shutdown the bot\n\n"
-            "**Bot Status:** ✅ Running\n"
-            "**Framework:** Pyrogram\n"
-            "**Registered Handlers:** Active"
-        )
+        stats_text = stats_manager.get_stats_text()
+        
+        admin_text = f"""🔧 **Admin Panel**
+
+{stats_text}
+
+**Mövcud Admin Əmrləri:**
+• `/admin` - Bu admin panelini göstər
+• `/logs` - Son log qeydlərini al
+• `/broadcast <mesaj>` - Bütün istifadəçilərə mesaj göndər
+• `/shutdown` - Bot'u təmiz şəkildə bağla
+
+**Bot Status:** ✅ Çalışır
+**Framework:** Pyrogram"""
         
         await message.reply_text(admin_text)
         logger.info(f"Admin command used by {message.from_user.id}")
     
+    @client.on_message(filters.command("logs") & filters.user(config.ADMIN_IDS))
+    @error_handler
+    async def logs_command(client: Client, message: Message):
+        """Handle /logs command (admin only)."""
+        try:
+            # Try to read recent logs from console or log file
+            log_content = "📋 **Son Log Qeydləri:**\n\n```\n"
+            
+            # First try to get from environment logs (GitHub Actions)
+            if os.path.exists("/tmp/bot.log"):
+                with open("/tmp/bot.log", 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+                    recent_lines = lines[-20:] if len(lines) > 20 else lines
+                    for line in recent_lines:
+                        log_content += line.strip() + "\n"
+            else:
+                # If no log file, show recent activity from stats
+                log_content += f"Bot başladı: {stats_manager.stats['bot_started_at']}\n"
+                log_content += f"Son aktivlik: {stats_manager.stats['last_activity']}\n"
+                log_content += f"Ümumi endirmələr: {stats_manager.stats['total_downloads']}\n"
+                log_content += f"Ümumi istifadəçilər: {len(stats_manager.stats['unique_users'])}\n"
+                log_content += f"İstifadə olunan əmrlər: {stats_manager.stats['commands_used']}\n"
+            
+            log_content += "```"
+            
+            # Split message if too long
+            if len(log_content) > 4000:
+                log_content = log_content[:4000] + "...\n```"
+            
+            await message.reply_text(log_content)
+            logger.info(f"Logs command used by {message.from_user.id}")
+            
+        except Exception as e:
+            await message.reply_text(f"❌ Log oxumaq xətası: {str(e)}")
+            logger.error(f"Error reading logs: {e}")
+    
+    @client.on_message(filters.command("broadcast") & filters.user(config.ADMIN_IDS))
+    @error_handler
+    async def broadcast_command(client: Client, message: Message):
+        """Handle /broadcast command (admin only)."""
+        command_parts = message.text.split(None, 1)
+        
+        if len(command_parts) < 2:
+            await message.reply_text(
+                "❌ **Broadcast Mesajı Formatı:**\n\n"
+                "`/broadcast Bu mesaj bütün istifadəçilərə göndəriləcək`\n\n"
+                "**Nümunə:**\n"
+                "`/broadcast 🎉 Bot yeniləndı! Yeni xüsusiyyətlər əlavə edildi.`"
+            )
+            return
+        
+        broadcast_text = command_parts[1]
+        
+        # Get all users from statistics
+        if isinstance(stats_manager.stats["unique_users"], list):
+            stats_manager.stats["unique_users"] = set(stats_manager.stats["unique_users"])
+        
+        all_users = list(stats_manager.stats["unique_users"])
+        
+        if not all_users:
+            await message.reply_text("❌ Heç bir istifadəçi tapılmadı.")
+            return
+        
+        # Send confirmation and start broadcasting immediately
+        confirm_text = f"""📢 **Broadcast Başladılır**
+
+**Mesaj:** {broadcast_text}
+**Göndəriləcək istifadəçi sayı:** {len(all_users)}"""
+        
+        status_msg = await message.reply_text(confirm_text)
+        
+        sent_count = 0
+        failed_count = 0
+        
+        for i, user_id in enumerate(all_users):
+            try:
+                await client.send_message(
+                    chat_id=user_id,
+                    text=f"📢 **Admin Mesajı:**\n\n{broadcast_text}"
+                )
+                sent_count += 1
+                
+                # Update progress every 10 users
+                if (i + 1) % 10 == 0:
+                    await status_msg.edit_text(
+                        f"📤 Göndərilir... {i + 1}/{len(all_users)}\n"
+                        f"✅ Uğurlu: {sent_count}\n"
+                        f"❌ Uğursuz: {failed_count}"
+                    )
+                
+                # Small delay to avoid rate limits
+                await asyncio.sleep(0.1)
+                
+            except Exception as e:
+                failed_count += 1
+                logger.warning(f"Failed to send broadcast to {user_id}: {e}")
+        
+        # Final status
+        await status_msg.edit_text(
+            f"✅ **Broadcast Tamamlandı**\n\n"
+            f"📊 **Nəticələr:**\n"
+            f"• Ümumi istifadəçi: {len(all_users)}\n"
+            f"• Uğurla göndərilən: {sent_count}\n"
+            f"• Uğursuz: {failed_count}\n"
+            f"• Uğur dərəcəsi: {(sent_count/len(all_users)*100):.1f}%"
+        )
+        
+        logger.info(f"Broadcast completed by admin {message.from_user.id}: {sent_count}/{len(all_users)} successful")
+
     @client.on_message(filters.command("shutdown") & filters.user(config.ADMIN_IDS))
     @error_handler
     async def shutdown_command(client: Client, message: Message):
