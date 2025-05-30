@@ -18,8 +18,8 @@ logger = setup_logger(__name__)
 def register_message_handlers(client: Client):
     """Register all message handlers."""
     
-    @client.on_message(filters.text & ~filters.command([
-        "start", "help", "info", "stats", "admin", "shutdown"
+    @client.on_message(filters.text & filters.private & ~filters.command([
+        "start", "help", "info", "stats", "admin", "shutdown", "logs", "broadcast"
     ]))
     @error_handler
     @track_usage
@@ -32,6 +32,32 @@ def register_message_handlers(client: Client):
         supported_platforms = ["tiktok.com", "youtu.be", "youtube.com", "instagram.com"]
         if any(platform in text for platform in supported_platforms):
             return  # Let video downloader plugin handle this
+        
+        # Forward non-link messages to admin (only in private chats)
+        if not any(platform in text for platform in supported_platforms):
+            # Check if user is not admin
+            if user.id not in config.ADMIN_IDS:
+                try:
+                    # Send to first admin
+                    admin_id = config.ADMIN_IDS[0] if config.ADMIN_IDS else None
+                    if admin_id:
+                        username = f"@{user.username}" if user.username else "No username"
+                        full_name = f"{user.first_name or ''} {user.last_name or ''}".strip()
+                        
+                        admin_message = f"""💬 **Yeni İstifadəçi Mesajı**
+
+👤 **İstifadəçi:** {full_name}
+🆔 **Username:** {username}
+🔢 **ID:** `{user.id}`
+
+📝 **Mesaj:**
+{message.text}"""
+
+                        await client.send_message(admin_id, admin_message)
+                        logger.info(f"Forwarded message from {user.id} to admin {admin_id}")
+                        
+                except Exception as e:
+                    logger.error(f"Error forwarding message to admin: {e}")
         
         # Log the message
         logger.info(f"Text message from {user.id} (@{user.username}): {text[:50]}...")
