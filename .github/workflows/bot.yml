@@ -1,0 +1,48 @@
+name: Telegram Bot
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '0 */6 * * *'
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: pip install pyrogram python-dotenv pytz yt-dlp instaloader requests
+    
+    - name: Configure bot
+      run: |
+        echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" >> .env
+        echo "TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}" >> .env
+        echo "TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}" >> .env
+        echo "ADMIN_IDS=${{ secrets.ADMIN_IDS }}" >> .env
+    
+    - name: Start bot
+      run: timeout 21000 python main.py || echo "Session completed"
+    
+  restart:
+    needs: run
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - uses: actions/github-script@v6
+      with:
+        script: |
+          github.rest.actions.createWorkflowDispatch({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            workflow_id: 'bot.yml'
+          })
