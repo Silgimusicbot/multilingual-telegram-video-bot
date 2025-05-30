@@ -11,7 +11,7 @@ class StatsManager:
     """Manages bot statistics with persistent storage via GitHub Gist."""
     
     def __init__(self, gist_id: str = None):
-        self.github_token = os.getenv("GITHUB_TOKEN")
+        self.github_token = os.getenv("BOT_GITHUB_TOKEN")
         self.gist_id = gist_id
         self.stats = self.load_stats()
     
