@@ -1,7 +1,3 @@
-"""
-Video downloader plugin for the Telegram bot.
-Downloads videos from TikTok, Instagram, and YouTube.
-"""
 
 import os
 import tempfile
@@ -13,6 +9,7 @@ from pyrogram.types import Message
 from bot.utils.logger import setup_logger
 from bot.utils.decorators import error_handler, track_usage, typing_action
 from bot.utils.language_manager import language_manager
+from bot.utils.stats_manager import stats_manager
 import yt_dlp
 import requests
 import instaloader
@@ -37,10 +34,16 @@ class VideoDownloaderPlugin:
     def _register_download_handler(self):
         """Register the video download handler."""
         
-        @self.client.on_message(filters.private & filters.text & ~filters.command([
-            "start", "help", "info", "stats", "admin", "shutdown", 
-            "echo", "ping", "time", "count"
-        ]))
+        # Create a custom filter for video URLs only
+        def is_video_url(_, __, message):
+            if not message.text:
+                return False
+            text = message.text.strip().lower()
+            return any(platform in text for platform in ["tiktok.com", "youtu.be", "youtube.com", "instagram.com"])
+        
+        video_url_filter = filters.create(is_video_url)
+        
+        @self.client.on_message(filters.private & filters.text & video_url_filter)
         @error_handler
         @track_usage
         @typing_action
@@ -55,9 +58,9 @@ class VideoDownloaderPlugin:
             # Check if the message contains a supported video platform URL
             supported_platforms = ["tiktok.com", "youtu.be", "youtube.com", "instagram.com"]
             
+            # This should not happen with the new filter, but keep as safety check
             if not any(platform in url.lower() for platform in supported_platforms):
-                # Not a video URL, let the regular message handler process it
-                logger.info(f"Not a video URL, skipping: {url[:30]}...")
+                logger.info(f"URL filter missed this, skipping: {url[:30]}...")
                 return
             
             logger.info(f"Processing video URL: {url}")
@@ -161,6 +164,9 @@ class VideoDownloaderPlugin:
                         progress=upload_progress_callback
                     )
                     
+                    # Add download to statistics
+                    stats_manager.add_download(platform.lower())
+                    
                     # Clean up the file
                     try:
                         os.remove(file_path)
@@ -169,6 +175,9 @@ class VideoDownloaderPlugin:
                     
                     # Delete the processing message
                     await processing_msg.delete()
+                    
+                    # Send notification to admin about the download
+                    await self._notify_admin_download(user, platform, url, video_title)
                     
                     logger.info(f"Successfully downloaded and sent {platform} video for user {message.from_user.id}")
                 else:
@@ -524,6 +533,46 @@ class VideoDownloaderPlugin:
         except Exception as e:
             logger.debug(f"Could not extract title from {url}: {e}")
             return ""
+
+    async def _notify_admin_download(self, user, platform: str, url: str, video_title: str = None):
+        """Send notification to admin about video download."""
+        try:
+            from bot.config import config
+            import datetime
+            import pytz
+            
+            # Get first admin ID
+            admin_id = config.ADMIN_IDS[0] if config.ADMIN_IDS else None
+            if not admin_id:
+                return
+                
+            # Get current time in Baku timezone
+            baku_tz = pytz.timezone('Asia/Baku')
+            current_time = datetime.datetime.now(baku_tz)
+            formatted_time = current_time.strftime("%Y-%m-%d %H:%M:%S")
+            
+            username = f"@{user.username}" if user.username else "No username"
+            full_name = f"{user.first_name or ''} {user.last_name or ''}".strip()
+            
+            # Create admin notification message
+            admin_message = f"""📹 **Video Yükləndi**
+
+📅 **Tarix:** {formatted_time}
+👤 **İstifadəçi:** {full_name}
+🆔 **Username:** {username}
+🔢 **ID:** `{user.id}`
+🌐 **Platform:** {platform.title()}
+
+📝 **Video Başlığı:** {video_title or 'Məlum deyil'}
+
+🔗 **Orijinal Link:**
+{url}"""
+
+            await self.client.send_message(admin_id, admin_message)
+            logger.info(f"Download notification sent to admin {admin_id} for user {user.id}")
+            
+        except Exception as e:
+            logger.error(f"Error sending download notification to admin: {e}")
 
     def _get_promotional_text(self, user_id: int) -> str:
         """Get promotional text for Telegram groups in user's language."""
