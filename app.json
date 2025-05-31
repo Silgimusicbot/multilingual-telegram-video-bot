@@ -1,0 +1,11 @@
+{
+  "name": "Telegram Video Downloader Bot",
+  "description": "A multilingual Telegram bot for downloading videos from TikTok, Instagram, and YouTube",
+  "keywords": ["telegram", "bot", "video", "downloader", "silgi", "tiktok", "instagram", "youtube"],
+  "repository": "https://github.com/Siçgimusicbot",
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    }
+  ]
+}
