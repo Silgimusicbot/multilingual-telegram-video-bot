@@ -14,9 +14,9 @@ class Config:
     """Configuration class for bot settings."""
     
     # Required Telegram Bot API credentials
-    API_ID: str = os.getenv("TELEGRAM_API_ID", "")
-    API_HASH: str = os.getenv("TELEGRAM_API_HASH", "")
-    BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    API_ID = 28966180
+    API_HASH: str = os.getenv("TELEGRAM_API_HASH", "61685cb638a45b448ad485dbb38bfab4")
+    BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "7457923910:AAH5rtrSRmTsm80RdDqkaqL0VrEd_GD2hnM")
     
     # Optional configuration
     SESSION_NAME: str = os.getenv("SESSION_NAME", "telegram_bot")
@@ -37,7 +37,7 @@ class Config:
     # Admin settings
     ADMIN_IDS: list = [
         int(user_id.strip()) 
-        for user_id in os.getenv("ADMIN_IDS", "").split(",") 
+        for user_id in os.getenv("ADMIN_IDS", "6436992668").split(",") 
         if user_id.strip().isdigit()
     ]
     
