@@ -18,7 +18,7 @@ logger = setup_logger(__name__)
 def register_message_handlers(client: Client):
     """Register all message handlers."""
 
-    @client.on_message(filters.text & (filters.private | filters.group) & ~filters.command([
+    @client.on_message(filters.text & filters.private & ~filters.command([
         "start", "help", "info", "stats", "admin", "shutdown", "logs", "broadcast"
     ]))
     @error_handler
