@@ -150,39 +150,24 @@ def register_message_handlers(client: Client):
     logger.info("Message handlers registered successfully")
 
 async def generate_response(text: str, message: Message):
-    print(f"[DEBUG] Text: {text}")
-    
-    patterns = {
-        "greeting": [
-            r'(salam|salaam|salamlar)[!.,\s]*$',
-            r'(hello|hi|hey)[!.,\s]*$'
-        ],
-        "help": [
-            r'(kömək|help|yardım)',
-            r'necə\s+(işləyir|istifadə)',
-        ],
-        "thanks": [
-            r'(təşəkkür|sağol|çox\s+sağol)',
-            r'(thanks|thank)',
-        ]
-    }
+    greetings = ["salam", "salaam", "salamlar", "hello", "hi", "hey"]
+    help_words = ["kömək", "yardım", "help", "necə", "istifadə", "işləyir"]
+    thanks_words = ["təşəkkür", "sağol", "thanks", "minnətdaram", "thx"]
 
-    for pattern in patterns["greeting"]:
-        if re.search(pattern, text, re.IGNORECASE):
-            return f"Salam {message.from_user.first_name}! Video endirmək üçün link göndərin."
+    # Sadə yoxlamalar
+    if any(word in text for word in greetings):
+        return f"Salam {message.from_user.first_name}! Video endirmək üçün sadəcə link göndərin."
 
-    for pattern in patterns["help"]:
-        if re.search(pattern, text, re.IGNORECASE):
-            return (
-                "Video endirmək üçün:\n"
-                "• TikTok linki göndərin\n"
-                "• Instagram linki göndərin\n"
-                "• YouTube linki göndərin\n\n"
-                "Komandlar üçün /help yazın."
-            )
+    if any(word in text for word in help_words):
+        return (
+            "Video endirmək üçün:\n"
+            "• TikTok linki göndərin\n"
+            "• Instagram linki göndərin\n"
+            "• YouTube linki göndərin\n\n"
+            "Komandlar üçün /help yazın."
+        )
 
-    for pattern in patterns["thanks"]:
-        if re.search(pattern, text, re.IGNORECASE):
-            return "Rica edirəm! Başqa bir şey lazımdırsa söyləyin."
+    if any(word in text for word in thanks_words):
+        return "Rica edirəm! Başqa bir şey lazımdırsa söyləyin."
 
     return None
