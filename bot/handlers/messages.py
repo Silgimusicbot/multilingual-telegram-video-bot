@@ -102,9 +102,9 @@ def register_message_handlers(client: Client):
         
         response = (
             f"📄 Fayl tapıldı!\n"
-            f"**File:** {document.file_name}\n"
-            f"**Size:** {document.file_size} bytes\n"
-            f"**Type:** {document.mime_type or 'Unknown'}"
+            f"**Fayl:** {document.file_name}\n"
+            f"**Ölçü:** {document.file_size} bytes\n"
+            f"**Tip:** {document.mime_type or 'Unknown'}"
         )
         
         await message.reply_text(response)
@@ -121,8 +121,8 @@ def register_message_handlers(client: Client):
         
         response = (
             f"🎤 Nə qəşəng səsin var!\n"
-            f"**Duration:** {voice.duration} seconds\n"
-            f"**Size:** {voice.file_size} bytes\n\n"
+            f"**Vaxt:** {voice.duration} seconds\n"
+            f"**Ölçü:** {voice.file_size} bytes\n\n"
             f"Səsli mesajları hələ oxuya bilmirəm, amma bunu görürəm!"
         )
         
