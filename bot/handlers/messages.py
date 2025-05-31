@@ -81,9 +81,9 @@ def register_message_handlers(client: Client):
         logger.info(f"Photo received from {user.id} (@{user.username})")
         
         responses = [
-            "📸 Nice photo! I can see you shared an image.",
-            "🖼️ Thanks for sharing the photo!",
-            "📷 I received your image. Looks interesting!",
+            "📸 Əla şəkil! Mən sənin şəkil atdığını görürəm.",
+            "🖼️ Şəkili paylaşdığın üçün təşəkkürlər!",
+            "📷 Sənin şəklini oğurladım. Halal et!",
         ]
         
         import random
@@ -101,7 +101,7 @@ def register_message_handlers(client: Client):
         logger.info(f"Document received from {user.id}: {document.file_name}")
         
         response = (
-            f"📄 Thanks for sharing the document!\n"
+            f"📄 Fayl tapıldı!\n"
             f"**File:** {document.file_name}\n"
             f"**Size:** {document.file_size} bytes\n"
             f"**Type:** {document.mime_type or 'Unknown'}"
@@ -120,10 +120,10 @@ def register_message_handlers(client: Client):
         logger.info(f"Voice message received from {user.id}")
         
         response = (
-            f"🎤 Thanks for the voice message!\n"
+            f"🎤 Nə qəşəng səsin var!\n"
             f"**Duration:** {voice.duration} seconds\n"
             f"**Size:** {voice.file_size} bytes\n\n"
-            f"I can't process voice messages yet, but I received it!"
+            f"Səsli mesajları hələ oxuya bilmirəm, amma bunu görürəm!"
         )
         
         await message.reply_text(response)
@@ -137,10 +137,10 @@ def register_message_handlers(client: Client):
         logger.info(f"Sticker received from {user.id}")
         
         responses = [
-            "😄 Cool sticker!",
-            "🎭 Nice sticker choice!",
-            "✨ Thanks for the sticker!",
-            "😊 I like that sticker!",
+            "😄 Əla sticker!",
+            "🎭 Qəşəng sticker seçimi!",
+            "✨ Sənə oxşayır!",
+            "😊 Bu stickeri bəyəndim! Mənim olsun?",
         ]
         
         import random
