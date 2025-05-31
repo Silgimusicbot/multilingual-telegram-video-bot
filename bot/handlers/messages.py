@@ -150,38 +150,28 @@ def register_message_handlers(client: Client):
     logger.info("Message handlers registered successfully")
 
 async def generate_response(text: str, message: Message):
-    """Generate automated response based on message content."""
+    print(f"[DEBUG] Text: {text}")
     
-    # Azerbaijani greeting patterns
-    greeting_patterns = [
-        r'\b(salam|salaam|salamlar)\b',
-        r'\b(hello|hi|hey)\b',
-        r'\b(sabahınız|günortanız|axşamınız)\s+(xeyir|xeyr)\b',
-        r'\bnə\s+var\s+nə\s+yox\b'
-    ]
-    
-    # Help/question patterns
-    help_patterns = [
-        r'\b(kömək|help|yardım)\b',
-        r'\bnecə\s+(işləyir|istifadə)\b',
-        r'\bnə\s+edə\s+bilir\b',
-        r'\bnə\s+üçün\b'
-    ]
-    
-    # Gratitude patterns in Azerbaijani
-    thanks_patterns = [
-        r'\b(təşəkkür|sağol|çox\s+sağol)\b',
-        r'\b(thank|thanks|thx)\b',
-        r'\bminnətdaram\b'
-    ]
-    
-    # Check for greetings (respond only to greetings)
-    for pattern in greeting_patterns:
+    patterns = {
+        "greeting": [
+            r'(salam|salaam|salamlar)[!.,\s]*$',
+            r'(hello|hi|hey)[!.,\s]*$'
+        ],
+        "help": [
+            r'(kömək|help|yardım)',
+            r'necə\s+(işləyir|istifadə)',
+        ],
+        "thanks": [
+            r'(təşəkkür|sağol|çox\s+sağol)',
+            r'(thanks|thank)',
+        ]
+    }
+
+    for pattern in patterns["greeting"]:
         if re.search(pattern, text, re.IGNORECASE):
-            return f"Salam {message.from_user.first_name}! Video endirmək üçün sadəcə link göndərin."
-    
-    # Check for help requests
-    for pattern in help_patterns:
+            return f"Salam {message.from_user.first_name}! Video endirmək üçün link göndərin."
+
+    for pattern in patterns["help"]:
         if re.search(pattern, text, re.IGNORECASE):
             return (
                 "Video endirmək üçün:\n"
@@ -190,11 +180,9 @@ async def generate_response(text: str, message: Message):
                 "• YouTube linki göndərin\n\n"
                 "Komandlar üçün /help yazın."
             )
-    
-    # Check for thanks
-    for pattern in thanks_patterns:
+
+    for pattern in patterns["thanks"]:
         if re.search(pattern, text, re.IGNORECASE):
             return "Rica edirəm! Başqa bir şey lazımdırsa söyləyin."
-    
-    # Return None for other messages (no response)
+
     return None
