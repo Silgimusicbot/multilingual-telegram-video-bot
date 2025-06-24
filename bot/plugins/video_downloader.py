@@ -164,8 +164,8 @@ class VideoDownloaderPlugin:
                 return
 
             try:
-                action, msg_id = data.split("|", 1)
-                msg_id = int(msg_id)
+               action, msg_id = data.split("|", 1)
+               msg_id = int(msg_id)
             except:
                 return await callback_query.message.edit_text("❌ Format xətası!")
 
@@ -182,40 +182,46 @@ class VideoDownloaderPlugin:
             downloading_text = language_manager.get_text(user_id, 'status', 'downloading', platform="YouTube")
             await message.edit_text(downloading_text)
 
-            file_path = await self._download_youtube(url, message, format_type=format_type)
+            try:
+                file_path = await self._download_youtube(url, message, format_type=format_type)
 
-            if file_path and os.path.exists(file_path):
-                file_size = os.path.getsize(file_path)
-                formatted_size = language_manager.format_size(file_size, user_id)
-                video_title = await self._extract_video_title(url, "YouTube")
-                uploading_text = language_manager.get_text(user_id, 'progress', 'uploading', percentage=0)
-                await message.edit_text(uploading_text)
+                if file_path and os.path.exists(file_path):
+                    file_size = os.path.getsize(file_path)
+                    formatted_size = language_manager.format_size(file_size, user_id)
+                    video_title = await self._extract_video_title(url, "YouTube")
+                    uploading_text = language_manager.get_text(user_id, 'progress', 'uploading', percentage=0)
+                    await message.edit_text(uploading_text)
 
-                async def upload_progress(current, total):
-                    percentage = int((current / total) * 100)
-                    bar = language_manager.create_progress_bar(percentage)
-                    text = language_manager.get_text(user_id, 'progress', 'uploading', percentage=percentage)
-                    if percentage % 10 == 0:
-                        try:
-                            await message.edit_text(f"📤 {text}: {bar}\n📁 {formatted_size}")
-                        except:
-                            pass
+                    async def upload_progress(current, total):
+                        percentage = int((current / total) * 100)
+                        bar = language_manager.create_progress_bar(percentage)
+                        text = language_manager.get_text(user_id, 'progress', 'uploading', percentage=percentage)
+                        if percentage % 10 == 0:
+                            try:
+                                await message.edit_text(f"📤 {text}: {bar}\n📁 {formatted_size}")
+                            except:
+                                pass
 
-                await client.send_document(
-                    chat_id=message.chat.id,
-                    document=file_path,
-                    caption=video_title,
-                    progress=upload_progress
-                )
+                    await client.send_document(
+                        chat_id=message.chat.id,
+                        document=file_path,
+                        caption=video_title,
+                        progress=upload_progress
+                    )
 
-                try:
-                    os.remove(file_path)
-                except Exception as cleanup_error:
-                    logger.warning(f"Failed to cleanup YouTube file: {cleanup_error}")
+                    try:
+                        os.remove(file_path)
+                    except Exception as cleanup_error:
+                        logger.warning(f"Failed to cleanup YouTube file: {cleanup_error}")
 
-                youtube_temp_links.pop(msg_id, None)
-            else:
-                await message.edit_text("❌ Yükləmə uğursuz oldu.")
+                    youtube_temp_links.pop(msg_id, None)
+
+                else:
+                    await message.edit_text(f"❌ Yükləmə uğursuz oldu. Fayl tapılmadı.\n`file_path`: {file_path}\n`mövcudluq`: {os.path.exists(file_path) if file_path else 'None'}")
+
+            except Exception as e:
+                logger.error(f"YouTube yükləmə xətası: {e}", exc_info=True)
+                await message.edit_text(f"❌ Yükləmə uğursuz oldu:\n{str(e)}")
     
     async def _download_tiktok(self, url: str, progress_msg=None) -> Optional[str]:
         """Download TikTok video using yt-dlp with optimized settings."""
