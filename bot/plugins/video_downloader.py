@@ -58,13 +58,17 @@ class VideoDownloaderPlugin:
                     file_path = await self._download_tiktok(url, processing_msg)
                     platform = "TikTok"
 
+                elif "instagram.com" in url.lower():
+                    downloading_text = language_manager.get_text(user.id, 'status', 'downloading', platform="Instagram")
+                    await processing_msg.edit_text(downloading_text)
+                    file_path = await self._download_instagram(url, processing_msg)
+                    platform = "Instagram"
+
                 elif "youtu.be" in url.lower() or "youtube.com" in url.lower():
-                    # Save data in cache
                     youtube_temp_links[message.id] = {
                         "url": url,
                         "user_id": user.id
                     }
-
                     buttons = InlineKeyboardMarkup([
                         [
                             InlineKeyboardButton("📹 Video", callback_data=f"yt_video|{message.id}"),
@@ -74,18 +78,11 @@ class VideoDownloaderPlugin:
                     await processing_msg.edit_text("🎬 YouTube yükləmə formatını seçin:", reply_markup=buttons)
                     return
 
-                elif "instagram.com" in url.lower():
-                    downloading_text = language_manager.get_text(user.id, 'status', 'downloading', platform="Instagram")
-                    await processing_msg.edit_text(downloading_text)
-                    file_path = await self._download_instagram(url, processing_msg)
-                    platform = "Instagram"
-
                 else:
                     not_supported_text = language_manager.get_text(user.id, 'status', 'not_supported')
                     await processing_msg.edit_text(not_supported_text)
                     return
 
-                # Fayl varsa, göndər
                 if file_path and os.path.exists(file_path):
                     file_size = os.path.getsize(file_path)
                     formatted_size = language_manager.format_size(file_size, user.id)
@@ -104,17 +101,60 @@ class VideoDownloaderPlugin:
                             except:
                                 pass
 
-                    await client.send_document(
-                        chat_id=message.chat.id,
-                        document=file_path,
-                        caption=video_title,
+                    platform_text = platform.title()
+                    promo_text = self._get_promotional_text(user.id)
+                    user_lang = language_manager.get_user_language(user.id)
+
+                    if user_lang == 'az':
+                        caption = f"📹 {platform_text}dan yükləndi"
+                        if video_title:
+                            caption += f"\n🎬 {video_title}"
+                        caption += f"\n📁 Ölçü: {formatted_size}\n\n{promo_text}"
+                    elif user_lang == 'en':
+                        caption = f"📹 Downloaded from {platform_text}"
+                        if video_title:
+                            caption += f"\n🎬 {video_title}"
+                        caption += f"\n📁 Size: {formatted_size}\n\n{promo_text}"
+                    elif user_lang == 'tr':
+                        caption = f"📹 {platform_text}'dan indirildi"
+                        if video_title:
+                            caption += f"\n🎬 {video_title}"
+                        caption += f"\n📁 Boyut: {formatted_size}\n\n{promo_text}"
+                    elif user_lang == 'ru':
+                        caption = f"📹 Загружено с {platform_text}"
+                        if video_title:
+                            caption += f"\n🎬 {video_title}"
+                        caption += f"\n📁 Размер: {formatted_size}\n\n{promo_text}"
+                    else:
+                        caption = f"📹 Downloaded from {platform_text}"
+                        if video_title:
+                            caption += f"\n🎬 {video_title}"
+                        caption += f"\n📁 Size: {formatted_size}\n\n{promo_text}"
+
+                    await message.reply_video(
+                        video=file_path,
+                        caption=caption,
                         progress=upload_progress_callback
                     )
+
+                    stats_manager.add_download(platform.lower())
+
+                    try:
+                        os.remove(file_path)
+                    except Exception as cleanup_error:
+                        logger.warning(f"Failed to cleanup file {file_path}: {cleanup_error}")
+
+                    await processing_msg.delete()
+                    await self._notify_admin_download(user, platform, url, video_title)
+
+                    logger.info(f"Successfully downloaded and sent {platform} video for user {message.from_user.id}")
                 else:
-                    await processing_msg.edit_text("❌ Yükləmə alınmadı.")
+                    download_failed = language_manager.get_text(user.id, 'status', 'download_failed')
+                    await processing_msg.edit_text(download_failed)
+
             except Exception as e:
-                logger.error(f"Yükləmə xətası: {e}", exc_info=True)
-                await processing_msg.edit_text("❌ Yükləmə zamanı xəta baş verdi.")
+                logger.error(f"Video download error for user {message.from_user.id}: {e}", exc_info=True)
+                await processing_msg.edit_text(f"❌ Error downloading video: {str(e)}")
 
     def _register_youtube_callback(self):
         @self.client.on_callback_query()
@@ -148,7 +188,6 @@ class VideoDownloaderPlugin:
                 file_size = os.path.getsize(file_path)
                 formatted_size = language_manager.format_size(file_size, user_id)
                 video_title = await self._extract_video_title(url, "YouTube")
-
                 uploading_text = language_manager.get_text(user_id, 'progress', 'uploading', percentage=0)
                 await message.edit_text(uploading_text)
 
@@ -168,79 +207,15 @@ class VideoDownloaderPlugin:
                     caption=video_title,
                     progress=upload_progress
                 )
+
+                try:
+                    os.remove(file_path)
+                except Exception as cleanup_error:
+                    logger.warning(f"Failed to cleanup YouTube file: {cleanup_error}")
+
+                youtube_temp_links.pop(msg_id, None)
             else:
                 await message.edit_text("❌ Yükləmə uğursuz oldu.")
-
-            youtube_temp_links.pop(msg_id, None)  # Cache təmizlənir
-                    
-                    # Create caption with title and promotional message
-                    platform_text = platform.title()  # Instagram, TikTok, etc.
-                    promo_text = self._get_promotional_text(user.id)
-                    
-                    # Get user's language for the caption
-                    user_lang = language_manager.get_user_language(user.id)
-                    
-                    # Create localized caption based on user's language
-                    if user_lang == 'az':
-                        caption = f"📹 {platform_text}dan yükləndi"
-                        if video_title:
-                            caption += f"\n🎬 {video_title}"
-                        caption += f"\n📁 Ölçü: {formatted_size}\n\n{promo_text}"
-                    elif user_lang == 'en':
-                        caption = f"📹 Downloaded from {platform_text}"
-                        if video_title:
-                            caption += f"\n🎬 {video_title}"
-                        caption += f"\n📁 Size: {formatted_size}\n\n{promo_text}"
-                    elif user_lang == 'tr':
-                        caption = f"📹 {platform_text}'dan indirildi"
-                        if video_title:
-                            caption += f"\n🎬 {video_title}"
-                        caption += f"\n📁 Boyut: {formatted_size}\n\n{promo_text}"
-                    elif user_lang == 'ru':
-                        caption = f"📹 Загружено с {platform_text}"
-                        if video_title:
-                            caption += f"\n🎬 {video_title}"
-                        caption += f"\n📁 Размер: {formatted_size}\n\n{promo_text}"
-                    else:
-                        # Default to English
-                        caption = f"📹 Downloaded from {platform_text}"
-                        if video_title:
-                            caption += f"\n🎬 {video_title}"
-                        caption += f"\n📁 Size: {formatted_size}\n\n{promo_text}"
-                    
-                    await message.reply_video(
-                        video=file_path,
-                        caption=caption,
-                        progress=upload_progress_callback
-                    )
-                    
-                    # Add download to statistics
-                    stats_manager.add_download(platform.lower())
-                    
-                    # Clean up the file
-                    try:
-                        os.remove(file_path)
-                    except Exception as cleanup_error:
-                        logger.warning(f"Failed to cleanup file {file_path}: {cleanup_error}")
-                    
-                    # Delete the processing message
-                    await processing_msg.delete()
-                    
-                    # Send notification to admin about the download
-                    await self._notify_admin_download(user, platform, url, video_title)
-                    
-                    logger.info(f"Successfully downloaded and sent {platform} video for user {message.from_user.id}")
-                else:
-                    if "youtube" in platform.lower():
-                        youtube_error = language_manager.get_text(user.id, 'youtube', 'restrictions')
-                        await processing_msg.edit_text(youtube_error)
-                    else:
-                        download_failed = language_manager.get_text(user.id, 'status', 'download_failed')
-                        await processing_msg.edit_text(download_failed)
-                    
-            except Exception as e:
-                logger.error(f"Video download error for user {message.from_user.id}: {e}", exc_info=True)
-                await processing_msg.edit_text(f"❌ Error downloading video: {str(e)}")
     
     async def _download_tiktok(self, url: str, progress_msg=None) -> Optional[str]:
         """Download TikTok video using yt-dlp with optimized settings."""
