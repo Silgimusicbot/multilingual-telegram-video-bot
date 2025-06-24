@@ -288,10 +288,10 @@ class VideoDownloaderPlugin:
             logger.error(f"TikTok download error: {e}", exc_info=True)
             return None
     
-    async def _download_youtube(self, url: str, format_type="mp4") -> str | None:
+    async def _download_youtube(self, url: str, format_type: str = "mp4") -> str | None:
         try:
             temp_dir = tempfile.mkdtemp()
-            plugin_dir = os.path.dirname(__file__)
+            plugin_dir = os.path.dirname(__file__)  # bot/plugins yolunu verir
             cookie_path = os.path.join(plugin_dir, "cookieyt.txt")
 
             ydl_opts = {
@@ -310,14 +310,18 @@ class VideoDownloaderPlugin:
                 nonlocal file_path
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(url, download=True)
-                    if "requested_downloads" in info:
+                    # requested_downloads varsa onu götür, yoxdursa standart filename
+                    if "requested_downloads" in info and info["requested_downloads"]:
                         file_path = info["requested_downloads"][0]["filepath"]
                     else:
                         file_path = ydl.prepare_filename(info)
 
             await asyncio.get_event_loop().run_in_executor(None, run_ydl)
 
-            return file_path if file_path and os.path.exists(file_path) else None
+            if file_path and os.path.exists(file_path):
+                return file_path
+            return None
+
         except Exception as e:
             print(f"❌ YouTube yükləmə xətası: {e}")
             return None
