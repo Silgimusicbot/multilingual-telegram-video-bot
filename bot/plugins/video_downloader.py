@@ -289,6 +289,9 @@ class VideoDownloaderPlugin:
             return None
     
     async def _download_youtube(self, url: str, progress_msg=None, format_type="mp4") -> Optional[str]:
+        import os, time, tempfile, glob, asyncio
+        import yt_dlp
+
         temp_dir = tempfile.gettempdir()
         temp_filename = f"youtube_{int(time.time())}_{os.getpid()}"
         temp_path = os.path.join(temp_dir, temp_filename)
@@ -299,10 +302,11 @@ class VideoDownloaderPlugin:
             'outtmpl': f'{temp_path}.%(ext)s',
             'quiet': True,
             'no_warnings': True,
+            'logger': logger
         }
 
         if os.path.exists(cookies_path):
-            ydl_opts['cookies'] = cookies_path
+            ydl_opts['cookiefile'] = cookies_path
 
         if format_type == "mp3":
             ydl_opts.update({
@@ -314,7 +318,7 @@ class VideoDownloaderPlugin:
                 }],
             })
         else:
-            ydl_opts['format'] = 'best[ext=mp4]/best'
+            ydl_opts['format'] = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best'
 
         loop = asyncio.get_event_loop()
 
@@ -324,9 +328,16 @@ class VideoDownloaderPlugin:
 
         try:
             await loop.run_in_executor(None, run_ydl)
-            pattern = f'{temp_path}.*'
-            files = glob.glob(pattern)
-            return files[0] if files else None
+
+        # Ən çox istifadə olunan uzantılarla faylı yoxla
+            for ext in ["mp4", "webm", "m4a", "mp3"]:
+                candidate_path = f"{temp_path}.{ext}"
+                if os.path.exists(candidate_path):
+                    return candidate_path
+
+            logger.error(f"YT faylı tapılmadı: temp_path={temp_path}")
+            return None
+
         except Exception as e:
             logger.error(f"YT Download Error: {e}", exc_info=True)
             return None
