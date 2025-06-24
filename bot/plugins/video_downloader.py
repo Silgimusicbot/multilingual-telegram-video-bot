@@ -19,157 +19,159 @@ import asyncio
 logger = setup_logger(__name__)
 
 class VideoDownloaderPlugin:
-    """Plugin for downloading videos from various platforms."""
-    
     def __init__(self, client: Client):
         self.client = client
         self.name = "Video Downloader"
         self.version = "1.0.0"
         self.description = "Download videos from TikTok, Instagram, and YouTube"
-    
+
     def register(self):
         self._register_download_handler()
-        self._register_youtube_callback()  # ✅ bunu əlavə et
+        self._register_youtube_callback()
         logger.info(f"Plugin '{self.name}' registered successfully")
+
     def _register_download_handler(self):
-        """Register the video download handler."""
-        
-        # Create a custom filter for video URLs only
         def is_video_url(_, __, message):
             if not message.text:
                 return False
             text = message.text.strip().lower()
             return any(platform in text for platform in ["tiktok.com", "youtu.be", "youtube.com", "instagram.com"])
-        
+
         video_url_filter = filters.create(is_video_url)
-        def _register_youtube_callback(self):
-            @self.client.on_callback_query()
-            async def youtube_format_callback(client, callback_query):
-                data = callback_query.data
-                if not data.startswith("yt_"):
-                    return
 
-                await callback_query.answer("Yükləmə başlayır...")
-
-                action, url, user_id = data.split("|", 2)
-                user_id = int(user_id)
-                message = callback_query.message
-
-                format_type = "mp4" if action == "yt_video" else "mp3"
-
-                downloading_text = language_manager.get_text(user_id, 'status', 'downloading', platform="YouTube")
-                await message.edit_text(downloading_text)
-
-                file_path = await self._download_youtube(url, message, format_type=format_type)
-
-                if file_path and os.path.exists(file_path):
-                    file_size = os.path.getsize(file_path)
-                    formatted_size = language_manager.format_size(file_size, user_id)
-                    video_title = await self._extract_video_title(url, "YouTube")
-
-                    uploading_text = language_manager.get_text(user_id, 'progress', 'uploading', percentage=0)
-                    await message.edit_text(uploading_text)
-
-                    async def upload_progress(current, total):
-                        percentage = int((current / total) * 100)
-                        bar = language_manager.create_progress_bar(percentage)
-                        text = language_manager.get_text(user_id, 'progress', 'uploading', percentage=percentage)
-                        try:
-                            if percentage % 10 == 0:
-                                await message.edit_text(f"📤 {text}: {bar}\n📁 {formatted_size}")
-                        except:
-                            pass
-
-                    await client.send_document(
-                        chat_id=message.chat.id,
-                        document=file_path,
-                        caption=video_title,
-                        progress=upload_progress
-                    )
-                else:
-                    await message.edit_text("❌ Yükləmə uğursuz oldu.")
         @self.client.on_message(filters.private & filters.text & video_url_filter)
         @error_handler
         @track_usage
         @typing_action
         async def handle_video_download(client: Client, message: Message):
-            """Handle video download requests."""
             url = message.text.strip()
             user = message.from_user
-            
-            # Log all text messages received by video downloader
+
             logger.info(f"Video downloader received message from {user.id}: {url[:50]}...")
-            
-            # Check if the message contains a supported video platform URL
-            supported_platforms = ["tiktok.com", "youtu.be", "youtube.com", "instagram.com"]
-            
-            # This should not happen with the new filter, but keep as safety check
-            if not any(platform in url.lower() for platform in supported_platforms):
-                logger.info(f"URL filter missed this, skipping: {url[:30]}...")
-                return
-            
-            logger.info(f"Processing video URL: {url}")
-            
-            # Send processing message in user's language
             processing_text = language_manager.get_text(user.id, 'status', 'processing')
             processing_msg = await message.reply(processing_text)
-            
+
             try:
                 if "tiktok.com" in url.lower():
-                    logger.info(f"Attempting TikTok download for: {url}")
-                    platform_name = language_manager.get_text(user.id, 'platforms', 'tiktok')
-                    downloading_text = language_manager.get_text(user.id, 'status', 'downloading', platform=platform_name)
+                    downloading_text = language_manager.get_text(user.id, 'status', 'downloading', platform="TikTok")
                     await processing_msg.edit_text(downloading_text)
                     file_path = await self._download_tiktok(url, processing_msg)
                     platform = "TikTok"
+
                 elif "youtu.be" in url.lower() or "youtube.com" in url.lower():
-                    logger.info(f"Offering YouTube format choice for: {url}")
+                    # Save data in cache
+                    youtube_temp_links[message.id] = {
+                        "url": url,
+                        "user_id": user.id
+                    }
+
                     buttons = InlineKeyboardMarkup([
                         [
-                            InlineKeyboardButton("📹 Video", callback_data=f"yt_video|{url}|{user.id}"),
-                            InlineKeyboardButton("🎵 MP3", callback_data=f"yt_audio|{url}|{user.id}")
+                            InlineKeyboardButton("📹 Video", callback_data=f"yt_video|{message.id}"),
+                            InlineKeyboardButton("🎵 MP3", callback_data=f"yt_audio|{message.id}")
                         ]
                     ])
                     await processing_msg.edit_text("🎬 YouTube yükləmə formatını seçin:", reply_markup=buttons)
                     return
+
                 elif "instagram.com" in url.lower():
-                    logger.info(f"Attempting Instagram download for: {url}")
-                    platform_name = language_manager.get_text(user.id, 'platforms', 'instagram')
-                    downloading_text = language_manager.get_text(user.id, 'status', 'downloading', platform=platform_name)
+                    downloading_text = language_manager.get_text(user.id, 'status', 'downloading', platform="Instagram")
                     await processing_msg.edit_text(downloading_text)
                     file_path = await self._download_instagram(url, processing_msg)
                     platform = "Instagram"
+
                 else:
-                    logger.warning(f"Unsupported platform for URL: {url}")
                     not_supported_text = language_manager.get_text(user.id, 'status', 'not_supported')
                     await processing_msg.edit_text(not_supported_text)
                     return
-                
-                logger.info(f"Download result for {platform}: {file_path}")
-                
+
+                # Fayl varsa, göndər
                 if file_path and os.path.exists(file_path):
-                    # Get file size for upload progress
                     file_size = os.path.getsize(file_path)
                     formatted_size = language_manager.format_size(file_size, user.id)
-                    
-                    # Extract video title
                     video_title = await self._extract_video_title(url, platform)
-                    
-                    # Update status to uploading with progress
+
                     uploading_text = language_manager.get_text(user.id, 'progress', 'uploading', percentage=0)
                     await processing_msg.edit_text(uploading_text)
-                    
-                    # Send the video with upload tracking
+
                     async def upload_progress_callback(current, total):
                         percentage = int((current / total) * 100)
                         progress_bar = language_manager.create_progress_bar(percentage)
-                        uploading_text = language_manager.get_text(user.id, 'progress', 'uploading', percentage=percentage)
-                        progress_text = f"📤 {uploading_text}: {progress_bar}\n📁 {formatted_size}"
+                        text = language_manager.get_text(user.id, 'progress', 'uploading', percentage=percentage)
+                        if percentage % 10 == 0:
+                            try:
+                                await processing_msg.edit_text(f"📤 {text}: {progress_bar}\n📁 {formatted_size}")
+                            except:
+                                pass
+
+                    await client.send_document(
+                        chat_id=message.chat.id,
+                        document=file_path,
+                        caption=video_title,
+                        progress=upload_progress_callback
+                    )
+                else:
+                    await processing_msg.edit_text("❌ Yükləmə alınmadı.")
+            except Exception as e:
+                logger.error(f"Yükləmə xətası: {e}", exc_info=True)
+                await processing_msg.edit_text("❌ Yükləmə zamanı xəta baş verdi.")
+
+    def _register_youtube_callback(self):
+        @self.client.on_callback_query()
+        async def youtube_format_callback(client, callback_query):
+            data = callback_query.data
+            if not data.startswith("yt_"):
+                return
+
+            try:
+                action, msg_id = data.split("|", 1)
+                msg_id = int(msg_id)
+            except:
+                return await callback_query.message.edit_text("❌ Format xətası!")
+
+            video_data = youtube_temp_links.get(msg_id)
+            if not video_data:
+                return await callback_query.message.edit_text("❌ Keçici məlumat tapılmadı.")
+
+            url = video_data["url"]
+            user_id = video_data["user_id"]
+            message = callback_query.message
+
+            await callback_query.answer("Yükləmə başlayır...")
+            format_type = "mp4" if action == "yt_video" else "mp3"
+            downloading_text = language_manager.get_text(user_id, 'status', 'downloading', platform="YouTube")
+            await message.edit_text(downloading_text)
+
+            file_path = await self._download_youtube(url, message, format_type=format_type)
+
+            if file_path and os.path.exists(file_path):
+                file_size = os.path.getsize(file_path)
+                formatted_size = language_manager.format_size(file_size, user_id)
+                video_title = await self._extract_video_title(url, "YouTube")
+
+                uploading_text = language_manager.get_text(user_id, 'progress', 'uploading', percentage=0)
+                await message.edit_text(uploading_text)
+
+                async def upload_progress(current, total):
+                    percentage = int((current / total) * 100)
+                    bar = language_manager.create_progress_bar(percentage)
+                    text = language_manager.get_text(user_id, 'progress', 'uploading', percentage=percentage)
+                    if percentage % 10 == 0:
                         try:
-                            if percentage % 10 == 0:  # Update every 10%
-                                await processing_msg.edit_text(progress_text)
+                            await message.edit_text(f"📤 {text}: {bar}\n📁 {formatted_size}")
                         except:
                             pass
+
+                await client.send_document(
+                    chat_id=message.chat.id,
+                    document=file_path,
+                    caption=video_title,
+                    progress=upload_progress
+                )
+            else:
+                await message.edit_text("❌ Yükləmə uğursuz oldu.")
+
+            youtube_temp_links.pop(msg_id, None)  # Cache təmizlənir
                     
                     # Create caption with title and promotional message
                     platform_text = platform.title()  # Instagram, TikTok, etc.
