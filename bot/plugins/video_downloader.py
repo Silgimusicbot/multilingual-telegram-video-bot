@@ -288,58 +288,38 @@ class VideoDownloaderPlugin:
             logger.error(f"TikTok download error: {e}", exc_info=True)
             return None
     
-    async def _download_youtube(self, url: str, progress_msg=None, format_type="mp4") -> Optional[str]:
-        import os, time, tempfile, glob, asyncio
-        import yt_dlp
-
-        temp_dir = tempfile.gettempdir()
-        temp_filename = f"youtube_{int(time.time())}_{os.getpid()}"
-        temp_path = os.path.join(temp_dir, temp_filename)
-
-        cookies_path = os.path.join(os.path.dirname(__file__), "cookieyt.txt")
-
-        ydl_opts = {
-            'outtmpl': f'{temp_path}.%(ext)s',
-            'quiet': True,
-            'no_warnings': True,
-            'logger': logger
-        }
-
-        if os.path.exists(cookies_path):
-            ydl_opts['cookiefile'] = cookies_path
-
-        if format_type == "mp3":
-            ydl_opts.update({
-                'format': 'bestaudio/best',
-                'postprocessors': [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                    'preferredquality': '192',
-                }],
-            })
-        else:
-            ydl_opts['format'] = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best'
-
-        loop = asyncio.get_event_loop()
-
-        def run_ydl():
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
-
+    async def _download_youtube(self, url: str, format_type="mp4") -> str | None:
         try:
-            await loop.run_in_executor(None, run_ydl)
+            temp_dir = tempfile.mkdtemp()
+            plugin_dir = os.path.dirname(__file__)
+            cookie_path = os.path.join(plugin_dir, "cookieyt.txt")
 
-        # Ən çox istifadə olunan uzantılarla faylı yoxla
-            for ext in ["mp4", "webm", "m4a", "mp3"]:
-                candidate_path = f"{temp_path}.{ext}"
-                if os.path.exists(candidate_path):
-                    return candidate_path
+            ydl_opts = {
+                "outtmpl": os.path.join(temp_dir, "%(title)s.%(ext)s"),
+                "format": "bestaudio/best" if format_type == "mp3" else "bestvideo+bestaudio/best",
+                "merge_output_format": format_type,
+                "quiet": True,
+            }
 
-            logger.error(f"YT faylı tapılmadı: temp_path={temp_path}")
-            return None
+            if os.path.exists(cookie_path):
+                ydl_opts["cookiefile"] = cookie_path
 
+            file_path = None
+
+            def run_ydl():
+                nonlocal file_path
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    if "requested_downloads" in info:
+                        file_path = info["requested_downloads"][0]["filepath"]
+                    else:
+                        file_path = ydl.prepare_filename(info)
+
+            await asyncio.get_event_loop().run_in_executor(None, run_ydl)
+
+            return file_path if file_path and os.path.exists(file_path) else None
         except Exception as e:
-            logger.error(f"YT Download Error: {e}", exc_info=True)
+            print(f"❌ YouTube yükləmə xətası: {e}")
             return None
             
             
