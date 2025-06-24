@@ -1,7 +1,6 @@
 
 import time
 import glob
-import yt_dlp
 import os
 import tempfile
 import asyncio
@@ -17,7 +16,7 @@ from bot.utils.stats_manager import stats_manager
 import yt_dlp
 import requests
 import instaloader
-import asyncio
+
 
 logger = setup_logger(__name__)
 youtube_temp_links = {}
