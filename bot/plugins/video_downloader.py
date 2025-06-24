@@ -17,7 +17,7 @@ import instaloader
 import asyncio
 
 logger = setup_logger(__name__)
-
+youtube_temp_links = {}
 class VideoDownloaderPlugin:
     def __init__(self, client: Client):
         self.client = client
