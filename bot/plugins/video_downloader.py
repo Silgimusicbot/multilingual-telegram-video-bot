@@ -473,8 +473,8 @@ class VideoDownloaderPlugin:
 
             if files and os.path.exists(files[0]) and os.path.getsize(files[0]) > 0:
                  downloaded_file = files[0]
-                logger.info(f"Instagram video saved to: {downloaded_file} (size: {os.path.getsize(downloaded_file)} bytes)")
-                return downloaded_file
+                 logger.info(f"Instagram video saved to: {downloaded_file} (size: {os.path.getsize(downloaded_file)} bytes)")
+                 return downloaded_file
             else:
                 logger.error(f"Instagram download failed or file is empty. Found files: {files}")
                 return None
