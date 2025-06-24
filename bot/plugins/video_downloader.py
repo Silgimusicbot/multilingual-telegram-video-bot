@@ -5,6 +5,7 @@ import asyncio
 from typing import Optional
 from pyrogram import filters
 from pyrogram.client import Client
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.types import Message
 from bot.utils.logger import setup_logger
 from bot.utils.decorators import error_handler, track_usage, typing_action
@@ -27,10 +28,9 @@ class VideoDownloaderPlugin:
         self.description = "Download videos from TikTok, Instagram, and YouTube"
     
     def register(self):
-        """Register all plugin commands."""
         self._register_download_handler()
+        self._register_youtube_callback()  # ✅ bunu əlavə et
         logger.info(f"Plugin '{self.name}' registered successfully")
-    
     def _register_download_handler(self):
         """Register the video download handler."""
         
@@ -42,7 +42,52 @@ class VideoDownloaderPlugin:
             return any(platform in text for platform in ["tiktok.com", "youtu.be", "youtube.com", "instagram.com"])
         
         video_url_filter = filters.create(is_video_url)
-        
+        def _register_youtube_callback(self):
+            @self.client.on_callback_query()
+            async def youtube_format_callback(client, callback_query):
+                data = callback_query.data
+                if not data.startswith("yt_"):
+                    return
+
+                await callback_query.answer("Yükləmə başlayır...")
+
+                action, url, user_id = data.split("|", 2)
+                user_id = int(user_id)
+                message = callback_query.message
+
+                format_type = "mp4" if action == "yt_video" else "mp3"
+
+                downloading_text = language_manager.get_text(user_id, 'status', 'downloading', platform="YouTube")
+                await message.edit_text(downloading_text)
+
+                file_path = await self._download_youtube(url, message, format_type=format_type)
+
+                if file_path and os.path.exists(file_path):
+                    file_size = os.path.getsize(file_path)
+                    formatted_size = language_manager.format_size(file_size, user_id)
+                    video_title = await self._extract_video_title(url, "YouTube")
+
+                    uploading_text = language_manager.get_text(user_id, 'progress', 'uploading', percentage=0)
+                    await message.edit_text(uploading_text)
+
+                    async def upload_progress(current, total):
+                        percentage = int((current / total) * 100)
+                        bar = language_manager.create_progress_bar(percentage)
+                        text = language_manager.get_text(user_id, 'progress', 'uploading', percentage=percentage)
+                        try:
+                            if percentage % 10 == 0:
+                                await message.edit_text(f"📤 {text}: {bar}\n📁 {formatted_size}")
+                        except:
+                            pass
+
+                    await client.send_document(
+                        chat_id=message.chat.id,
+                        document=file_path,
+                        caption=video_title,
+                        progress=upload_progress
+                    )
+                else:
+                    await message.edit_text("❌ Yükləmə uğursuz oldu.")
         @self.client.on_message(filters.private & filters.text & video_url_filter)
         @error_handler
         @track_usage
