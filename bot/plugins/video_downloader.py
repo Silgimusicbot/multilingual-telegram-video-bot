@@ -78,12 +78,15 @@ class VideoDownloaderPlugin:
                     file_path = await self._download_tiktok(url, processing_msg)
                     platform = "TikTok"
                 elif "youtu.be" in url.lower() or "youtube.com" in url.lower():
-                    logger.info(f"Attempting YouTube download for: {url}")
-                    platform_name = language_manager.get_text(user.id, 'platforms', 'youtube')
-                    downloading_text = language_manager.get_text(user.id, 'status', 'downloading', platform=platform_name)
-                    await processing_msg.edit_text(downloading_text)
-                    file_path = await self._download_youtube(url, processing_msg)
-                    platform = "YouTube"
+                    logger.info(f"Offering YouTube format choice for: {url}")
+                    buttons = InlineKeyboardMarkup([
+                        [
+                            InlineKeyboardButton("📹 Video", callback_data=f"yt_video|{url}|{user.id}"),
+                            InlineKeyboardButton("🎵 MP3", callback_data=f"yt_audio|{url}|{user.id}")
+                        ]
+                    ])
+                    await processing_msg.edit_text("🎬 YouTube yükləmə formatını seçin:", reply_markup=buttons)
+                    return
                 elif "instagram.com" in url.lower():
                     logger.info(f"Attempting Instagram download for: {url}")
                     platform_name = language_manager.get_text(user.id, 'platforms', 'instagram')
@@ -255,180 +258,48 @@ class VideoDownloaderPlugin:
             logger.error(f"TikTok download error: {e}", exc_info=True)
             return None
     
-    async def _download_youtube(self, url: str, progress_msg=None) -> Optional[str]:
-        """Download YouTube video using yt-dlp with advanced bypass techniques."""
-        logger.info(f"Starting YouTube download for: {url}")
+    async def _download_youtube(self, url: str, progress_msg=None, format_type="mp4") -> Optional[str]:
+        import os, time, tempfile, glob, yt_dlp
+
+        temp_dir = tempfile.gettempdir()
+        temp_filename = f"youtube_{int(time.time())}_{os.getpid()}"
+        temp_path = os.path.join(temp_dir, temp_filename)
+
+        cookies_path = os.path.join(os.path.dirname(__file__), "cookieyt.txt")
+
+        if not os.path.exists(cookies_path):
+            return None
+
+        ydl_opts = {
+            'outtmpl': f'{temp_path}.%(ext)s',
+            'quiet': True,
+            'no_warnings': True,
+            'cookies': cookies_path,
+        }
+
+        if format_type == "mp3":
+            ydl_opts.update({
+                'format': 'bestaudio/best',
+                'postprocessors': [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'mp3',
+                    'preferredquality': '192',
+                }],
+            })
+        else:
+            ydl_opts['format'] = 'best[ext=mp4]/best'
+
         try:
-            import yt_dlp
-            import random
-            
-            # Create unique temporary filename
-            import os
-            import time
-            temp_dir = tempfile.gettempdir()
-            temp_filename = f"youtube_{int(time.time())}_{os.getpid()}"
-            temp_path = os.path.join(temp_dir, temp_filename)
-            
-            # Random user agents to avoid detection
-            user_agents = [
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0',
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/121.0'
-            ]
-            
-            # Base configuration
-            base_opts = {
-                'outtmpl': f'{temp_path}.%(ext)s',
-                'quiet': True,
-                'no_warnings': True,
-                'extractaudio': False,
-                'embed_subs': False,
-                'writesubtitles': False,
-                'writeautomaticsub': False,
-                'user_agent': random.choice(user_agents),
-                'http_headers': {
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                    'Accept-Language': 'en-US,en;q=0.5',
-                    'Accept-Encoding': 'gzip, deflate',
-                    'DNT': '1',
-                    'Connection': 'keep-alive',
-                    'Upgrade-Insecure-Requests': '1',
-                    'Sec-Fetch-Dest': 'document',
-                    'Sec-Fetch-Mode': 'navigate',
-                    'Sec-Fetch-Site': 'none',
-                    'Cache-Control': 'max-age=0'
-                }
-            }
-            
-            # Advanced YouTube extraction strategies
-            extraction_methods = [
-                # Method 1: Mobile web client (often bypasses restrictions)
-                {
-                    **base_opts,
-                    'format': '18/mp4[height<=360]/best[height<=360]',
-                    'extractor_args': {
-                        'youtube': {
-                            'player_client': ['mweb'],
-                            'skip': ['dash', 'hls'],
-                            'lang': ['en'],
-                            'region': 'US'
-                        }
-                    },
-                    'http_headers': {
-                        **base_opts['http_headers'],
-                        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36'
-                    }
-                },
-                # Method 2: Android TV client (less restricted)
-                {
-                    **base_opts,
-                    'format': 'mp4[height<=480]/18/mp4',
-                    'extractor_args': {
-                        'youtube': {
-                            'player_client': ['android_tv'],
-                            'skip': ['dash', 'hls']
-                        }
-                    }
-                },
-                # Method 3: iOS with specific format
-                {
-                    **base_opts,
-                    'format': '22/18/mp4[height<=720]/best[height<=720]',
-                    'extractor_args': {
-                        'youtube': {
-                            'player_client': ['ios_music'],
-                            'skip': ['dash', 'hls']
-                        }
-                    },
-                    'http_headers': {
-                        **base_opts['http_headers'],
-                        'User-Agent': 'com.google.ios.youtube/17.33.2 (iPhone14,3; U; CPU iOS 15_6 like Mac OS X)'
-                    }
-                },
-                # Method 4: Embedded player (sometimes works)
-                {
-                    **base_opts,
-                    'format': 'worst[ext=mp4]/mp4/best[height<=360]',
-                    'extractor_args': {
-                        'youtube': {
-                            'player_client': ['tv_embedded'],
-                            'skip': ['dash', 'hls']
-                        }
-                    },
-                    'http_headers': {
-                        **base_opts['http_headers'],
-                        'Referer': 'https://www.youtube.com/embed/',
-                        'Origin': 'https://www.youtube.com'
-                    }
-                },
-                # Method 5: Age-gated bypass
-                {
-                    **base_opts,
-                    'format': '18/mp4',
-                    'extractor_args': {
-                        'youtube': {
-                            'player_client': ['android_agegate'],
-                            'skip': ['dash', 'hls']
-                        }
-                    }
-                },
-                # Method 6: Audio-only as fallback (convert to video)
-                {
-                    **base_opts,
-                    'format': 'bestaudio[ext=m4a]/bestaudio',
-                    'postprocessors': [{
-                        'key': 'FFmpegVideoConvertor',
-                        'preferedformat': 'mp4',
-                    }],
-                    'extractor_args': {
-                        'youtube': {
-                            'player_client': ['android'],
-                            'skip': ['dash', 'hls']
-                        }
-                    }
-                }
-            ]
-            
-            for i, opts in enumerate(extraction_methods):
-                try:
-                    logger.info(f"Attempting YouTube extraction method {i+1}")
-                    
-                    with yt_dlp.YoutubeDL(opts) as ydl:
-                        # Add some delay between attempts
-                        if i > 0:
-                            await asyncio.sleep(2)
-                            
-                        ydl.download([url])
-                        
-                    # Find the actual downloaded file
-                    import glob
-                    pattern = f'{temp_path}.*'
-                    files = glob.glob(pattern)
-                    
-                    if files and os.path.exists(files[0]) and os.path.getsize(files[0]) > 0:
-                        downloaded_file = files[0]
-                        logger.info(f"YouTube video saved to: {downloaded_file} (size: {os.path.getsize(downloaded_file)} bytes)")
-                        return downloaded_file
-                        
-                except Exception as method_error:
-                    logger.warning(f"YouTube extraction method {i+1} failed: {method_error}")
-                    # Clean up any partial downloads
-                    import glob
-                    for partial_file in glob.glob(f'{temp_path}*'):
-                        try:
-                            os.remove(partial_file)
-                        except:
-                            pass
-                    continue
-            
-            logger.error(f"All YouTube extraction methods failed")
-            return None
-                
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+            pattern = f'{temp_path}.*'
+            files = glob.glob(pattern)
+            return files[0] if files else None
         except Exception as e:
-            logger.error(f"YouTube download error: {e}")
+            logger.error(f"YT Download Error: {e}", exc_info=True)
             return None
+            
+            
     
     async def _download_instagram(self, url: str, progress_msg=None) -> Optional[str]:
         import os
@@ -598,3 +469,48 @@ class VideoDownloaderPlugin:
         groups = "@silgiuserbots | @silgiub | @silgiuserbotchat"
         
         return f"{promo_text}\n{groups}"
+@self.client.on_callback_query()
+async def youtube_format_callback(client, callback_query):
+    data = callback_query.data
+    if not data.startswith("yt_"):
+        return
+
+    await callback_query.answer("Yükləmə başlayır...")
+
+    action, url, user_id = data.split("|", 2)
+    user_id = int(user_id)
+    message = callback_query.message
+
+    format_type = "mp4" if action == "yt_video" else "mp3"
+
+    downloading_text = language_manager.get_text(user_id, 'status', 'downloading', platform="YouTube")
+    await message.edit_text(downloading_text)
+
+    file_path = await self._download_youtube(url, message, format_type=format_type)
+
+    if file_path and os.path.exists(file_path):
+        file_size = os.path.getsize(file_path)
+        formatted_size = language_manager.format_size(file_size, user_id)
+        video_title = await self._extract_video_title(url, "YouTube")
+
+        uploading_text = language_manager.get_text(user_id, 'progress', 'uploading', percentage=0)
+        await message.edit_text(uploading_text)
+
+        async def upload_progress(current, total):
+            percentage = int((current / total) * 100)
+            bar = language_manager.create_progress_bar(percentage)
+            text = language_manager.get_text(user_id, 'progress', 'uploading', percentage=percentage)
+            try:
+                if percentage % 10 == 0:
+                    await message.edit_text(f"📤 {text}: {bar}\n📁 {formatted_size}")
+            except:
+                pass
+
+        await client.send_document(
+            chat_id=message.chat.id,
+            document=file_path,
+            caption=video_title,
+            progress=upload_progress
+        )
+    else:
+        await message.edit_text("❌ Yükləmə uğursuz oldu.")
