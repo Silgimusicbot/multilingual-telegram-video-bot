@@ -287,23 +287,20 @@ class VideoDownloaderPlugin:
             return None
     
     async def _download_youtube(self, url: str, progress_msg=None, format_type="mp4") -> Optional[str]:
-        import os, time, tempfile, glob, yt_dlp
-
         temp_dir = tempfile.gettempdir()
         temp_filename = f"youtube_{int(time.time())}_{os.getpid()}"
         temp_path = os.path.join(temp_dir, temp_filename)
 
         cookies_path = os.path.join(os.path.dirname(__file__), "cookieyt.txt")
 
-        if not os.path.exists(cookies_path):
-            return None
-
         ydl_opts = {
             'outtmpl': f'{temp_path}.%(ext)s',
             'quiet': True,
             'no_warnings': True,
-            'cookies': cookies_path,
         }
+
+        if os.path.exists(cookies_path):
+            ydl_opts['cookies'] = cookies_path
 
         if format_type == "mp3":
             ydl_opts.update({
@@ -317,9 +314,14 @@ class VideoDownloaderPlugin:
         else:
             ydl_opts['format'] = 'best[ext=mp4]/best'
 
-        try:
+        loop = asyncio.get_event_loop()
+
+        def run_ydl():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
+
+        try:
+            await loop.run_in_executor(None, run_ydl)
             pattern = f'{temp_path}.*'
             files = glob.glob(pattern)
             return files[0] if files else None
