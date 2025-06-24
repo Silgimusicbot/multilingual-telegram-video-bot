@@ -431,41 +431,54 @@ class VideoDownloaderPlugin:
             return None
     
     async def _download_instagram(self, url: str, progress_msg=None) -> Optional[str]:
-        """Download Instagram video using yt-dlp."""
+        import os
+        import time
+        import tempfile
+        import glob
+        import yt_dlp
+        import logging
+
+        logger = logging.getLogger(__name__)
+
         logger.info(f"Starting Instagram download for: {url}")
+
         try:
-            import yt_dlp
-            
-            # Create unique temporary filename
-            import os
-            import time
             temp_dir = tempfile.gettempdir()
             temp_filename = f"instagram_{int(time.time())}_{os.getpid()}"
             temp_path = os.path.join(temp_dir, temp_filename)
-            
+
+        # cookies.txt faylının yolu – bu fayl kodla eyni qovluqda olmalıdır
+            cookies_path = os.path.join(os.path.dirname(__file__), "cookies.txt")
+
+        # Fayl varsa davam et
+            if not os.path.exists(cookies_path):
+                logger.error("cookies.txt tapılmadı!")
+                return None
+
             ydl_opts = {
                 'format': 'best[ext=mp4]/best',
                 'outtmpl': f'{temp_path}.%(ext)s',
                 'quiet': True,
                 'no_warnings': True,
+                'cookies': cookies_path,
             }
-            
+
+        # Videonu yüklə
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
-                
-            # Find the actual downloaded file
-            import glob
+
+        # Yüklənmiş faylı tap
             pattern = f'{temp_path}.*'
             files = glob.glob(pattern)
-            
+
             if files and os.path.exists(files[0]) and os.path.getsize(files[0]) > 0:
-                downloaded_file = files[0]
+                 downloaded_file = files[0]
                 logger.info(f"Instagram video saved to: {downloaded_file} (size: {os.path.getsize(downloaded_file)} bytes)")
                 return downloaded_file
             else:
                 logger.error(f"Instagram download failed or file is empty. Found files: {files}")
                 return None
-                
+
         except Exception as e:
             logger.error(f"Instagram download error: {e}", exc_info=True)
             return None
