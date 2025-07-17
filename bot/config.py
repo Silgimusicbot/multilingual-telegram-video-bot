@@ -16,7 +16,7 @@ class Config:
     # Required Telegram Bot API credentials
     API_ID = 28966180
     API_HASH: str = os.getenv("TELEGRAM_API_HASH", "61685cb638a45b448ad485dbb38bfab4")
-    BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "7457923910:AAH5rtrSRmTsm80RdDqkaqL0VrEd_GD2hnM")
+    BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "7457923910:AAH-UmyzmY4tQeyoP73ODJ4YfCaaadA5ePg")
     
     # Optional configuration
     SESSION_NAME: str = os.getenv("SESSION_NAME", "telegram_bot")
